@@ -102,13 +102,4 @@ The app uses mock services to simulate:
    - Configure EAS Build
    - Submit to app stores
 
-## Recent Changes
-- 2024-10-27: Initial MVP completed with all core screens and features
-- Fixed navigation to use nested routes correctly
-- Replaced web-only elements with React Native components for cross-platform compatibility
 
-## Notes
-- Currently using mock services for classification
-- Camera permissions required for scanning
-- Web bundle optimized for fast loading
-- Ready for real ML API integration
