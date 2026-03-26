@@ -8,30 +8,46 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 import { Card } from '../../components/common/Card/Card';
-import { Badge } from '../../components/common/Badge/Badge';
-import { userService } from '../../services/mock/userService';
-import { User, Challenge, Badge as BadgeType } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { db } from '../../services/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { callSyncUserProfile, callGetAllBadges } from '../../services/functions';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
+import { GuestBanner } from '../../components/GuestBanner';
+import { BadgeCard } from '../../components/BadgeCard';
+import { Badge } from '../../types';
 
-export const ProfileScreen = () => {
-  const { signOut } = useAuth();
+export const ProfileScreen = ({ navigation }: any) => {
+  const { signOut, user: authUser, isAnonymous } = useAuth();
+  const [userData, setUserData] = useState<any>(null);
+  const [allBadges, setAllBadges] = useState<Badge[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingCity, setSavingCity] = useState(false);
 
-  const [user, setUser] = useState<User | null>(null);
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [badges, setBadges] = useState<BadgeType[]>([]);
+  // Predefined cities for the MVP
+  const CITIES = ['San Francisco', 'New York', 'London', 'Tokyo', 'Berlin'];
 
   useEffect(() => {
-    loadData();
-  }, []);
+    // Load badges once
+    callGetAllBadges()
+      .then(res => { if (res.success) setAllBadges(res.data); })
+      .catch(err => console.error('Failed to load badges:', err));
 
-  const loadData = async () => {
-    const userData = await userService.getUser();
-    const challengesData = await userService.getChallenges();
-    const badgesData = await userService.getBadges();
-    setUser(userData);
-    setChallenges(challengesData);
-    setBadges(badgesData);
-  };
+    if (!authUser || isAnonymous) {
+      setLoading(false);
+      return;
+    }
+
+    // Listen to current user document
+    const unsub = onSnapshot(doc(db, 'users', authUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setUserData(docSnap.data());
+      }
+      setLoading(false);
+    });
+
+    return () => unsub();
+  }, [authUser, isAnonymous]);
 
   const handleLogout = async () => {
     try {
@@ -41,93 +57,88 @@ export const ProfileScreen = () => {
     }
   };
 
-  if (!user) return null;
+  const handleCitySelect = async (city: string) => {
+    if (savingCity) return;
+    setSavingCity(true);
+    try {
+      await callSyncUserProfile({ city });
+    } catch (err) {
+      console.error('Failed to update city:', err);
+    } finally {
+      setSavingCity(false);
+    }
+  };
+
+  if (loading) return <LoadingSkeleton lines={5} />;
+
+  const earnedBadgeIds = userData?.badges || [];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {isAnonymous && (
+        <GuestBanner onSignUp={() => navigation.navigate('AuthStack')} />
+      )}
+
       {/* PROFILE CARD */}
       <Card style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {user.name.charAt(0).toUpperCase()}
+            {userData?.displayName ? userData.displayName.charAt(0).toUpperCase() : 'U'}
           </Text>
         </View>
-        <Text style={styles.name}>{user.name}</Text>
-        <Text style={styles.email}>{user.email}</Text>
-        <View style={styles.levelBadge}>
-          <Text style={styles.levelText}>Level {user.level}</Text>
+        <Text style={styles.name}>{userData?.displayName || 'Guest User'}</Text>
+        <Text style={styles.email}>{userData?.email || 'Anonymous'}</Text>
+        
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.pointsText}>{userData?.totalPoints || 0}</Text>
+            <Text style={styles.pointsLabel}>Total Points</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.pointsText}>{userData?.totalScans || 0}</Text>
+            <Text style={styles.pointsLabel}>Total Scans</Text>
+          </View>
         </View>
       </Card>
 
-      {/* CHALLENGES */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Active Challenges</Text>
-        {challenges.map((challenge) => (
-          <Card key={challenge.id} style={styles.challengeCard}>
-            <View style={styles.challengeHeader}>
-              <Text style={styles.challengeIcon}>{challenge.icon}</Text>
-              <View style={styles.challengeInfo}>
-                <Text style={styles.challengeTitle}>{challenge.title}</Text>
-                <Text style={styles.challengeDescription}>
-                  {challenge.description}
+      {/* CITY SELECTOR */}
+      {!isAnonymous && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your City</Text>
+          <Text style={styles.sectionSubtitle}>Select your city to join local leaderboards.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cityScroll}>
+            {CITIES.map(c => (
+              <TouchableOpacity
+                key={c}
+                style={[styles.cityChip, userData?.city === c && styles.cityChipActive]}
+                onPress={() => handleCitySelect(c)}
+                disabled={savingCity}
+              >
+                <Text style={[styles.cityChipText, userData?.city === c && styles.cityChipTextActive]}>
+                  {c}
                 </Text>
-              </View>
-            </View>
-
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${
-                        (challenge.progress / challenge.target) * 100
-                      }%`,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressText}>
-                {challenge.progress}/{challenge.target}
-              </Text>
-            </View>
-
-            {challenge.status === 'completed' && (
-              <Badge label="✓ Completed" color={colors.success} size="small" />
-            )}
-          </Card>
-        ))}
-      </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* BADGES */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Badges</Text>
-        <View style={styles.badgesGrid}>
-          {badges.map((badge) => (
-            <Card
-              key={badge.id}
-              style={[
-                styles.badgeCard,
-                !badge.unlockedAt && styles.badgeLocked,
-              ]}
-            >
-              <Text style={styles.badgeIcon}>{badge.icon}</Text>
-              <Text
-                style={[
-                  styles.badgeName,
-                  !badge.unlockedAt && styles.badgeNameLocked,
-                ]}
-              >
-                {badge.name}
-              </Text>
-              {badge.unlockedAt && (
-                <Text style={styles.badgeDate}>
-                  {new Date(badge.unlockedAt).toLocaleDateString()}
-                </Text>
-              )}
-            </Card>
-          ))}
-        </View>
+        {allBadges.length === 0 ? (
+          <Text style={styles.badgeDate}>No badges loaded.</Text>
+        ) : (
+          <View style={styles.badgesGrid}>
+            {allBadges.map((badge) => (
+              <BadgeCard
+                key={badge.id}
+                badge={badge}
+                earned={earnedBadgeIds.includes(badge.id)}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* LOGOUT */}
@@ -173,17 +184,22 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: spacing.md,
   },
-  levelBadge: {
-    backgroundColor: colors.primary.light,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 16,
+  pointsText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.primary.main,
   },
-  levelText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text.inverse,
+  pointsLabel: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
   },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginTop: spacing.sm,
+  },
+  statBox: { alignItems: 'center' },
   section: {
     marginBottom: spacing.lg,
   },
@@ -192,79 +208,24 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing.md,
   },
-  challengeCard: {
-    marginBottom: spacing.sm,
+  sectionSubtitle: { fontSize: 13, color: colors.text.secondary, marginBottom: spacing.sm },
+  cityScroll: { flexDirection: 'row', marginBottom: spacing.md },
+  cityChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: spacing.sm,
   },
-  challengeHeader: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  challengeIcon: {
-    fontSize: 32,
-  },
-  challengeInfo: {
-    flex: 1,
-  },
-  challengeTitle: {
-    ...typography.body,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  challengeDescription: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  progressBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: colors.background.tertiary,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primary.main,
-  },
-  progressText: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
-    minWidth: 50,
-    textAlign: 'right',
-  },
+  cityChipActive: { backgroundColor: colors.primary.main, borderColor: colors.primary.main },
+  cityChipText: { color: colors.text.primary, fontWeight: '600' },
+  cityChipTextActive: { color: '#fff' },
   badgesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  badgeCard: {
-    width: '48%',
-    alignItems: 'center',
-    padding: spacing.md,
-  },
-  badgeLocked: {
-    opacity: 0.4,
-  },
-  badgeIcon: {
-    fontSize: 40,
-    marginBottom: spacing.sm,
-  },
-  badgeName: {
-    ...typography.bodySmall,
-    fontWeight: '600',
-    color: colors.text.primary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  badgeNameLocked: {
-    color: colors.text.disabled,
   },
   badgeDate: {
     ...typography.caption,

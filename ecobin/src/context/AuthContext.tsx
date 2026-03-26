@@ -11,6 +11,9 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
+  signInAnonymously as firebaseSignInAnonymously,
+  linkWithCredential,
+  EmailAuthProvider,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
@@ -18,84 +21,105 @@ import { auth, db } from '../services/firebase';
 type AuthContextType = {
   user: User | null;
   loading: boolean;
+  isAnonymous: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, username: string) => Promise<void>;
+  signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
+  signInAnonymously: () => Promise<void>;
+  upgradeAnonymousAccount: (email: string, password: string) => Promise<void>;
+  isAdmin: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 🔄 Listen to Firebase Auth State
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
+      if (firebaseUser && !firebaseUser.isAnonymous) {
+        try {
+          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          setIsAdmin(snap.exists() && snap.data()?.role === 'admin');
+        } catch {
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
-  // 🔐 Login
   const signIn = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
-  // 📝 Register
-  const signUp = async (
-    email: string,
-    password: string,
-    username: string
-  ) => {
-    const credential = await createUserWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
-
+  const signUp = async (email: string, password: string, displayName: string) => {
+    const credential = await createUserWithEmailAndPassword(auth, email, password);
     const uid = credential.user.uid;
     const userRef = doc(db, 'users', uid);
-
-    // Create user profile ONLY if it doesn't exist
-    const snapshot = await getDoc(userRef);
-
-    if (!snapshot.exists()) {
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
       await setDoc(userRef, {
+        uid,
         email,
-        username,
-        points: 0,
-        level: 1,
-        streak: 0,
+        displayName,
+        username: displayName,
+        avatarUrl: '',
+        city: '',
+        totalPoints: 0,
         totalScans: 0,
+        correctQuizAnswers: 0,
+        reportsSubmitted: 0,
+        badges: [],
+        isAnonymous: false,
+        fcmToken: '',
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     }
   };
 
-  // 🚪 Logout
   const signOut = async () => {
     await firebaseSignOut(auth);
   };
 
-  const value: AuthContextType = {
-    user,
-    loading,
-    signIn,
-    signUp,
-    signOut,
+  const signInAnonymously = async () => {
+    await firebaseSignInAnonymously(auth);
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const upgradeAnonymousAccount = async (email: string, password: string) => {
+    if (!user || !user.isAnonymous) throw new Error('No anonymous user to upgrade');
+    const credential = EmailAuthProvider.credential(email, password);
+    await linkWithCredential(user, credential);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        isAnonymous: user?.isAnonymous ?? false,
+        signIn,
+        signUp,
+        signOut,
+        signInAnonymously,
+        upgradeAnonymousAccount,
+        isAdmin,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-// 🪝 Custom Hook
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used inside AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used inside AuthProvider');
   return context;
 }

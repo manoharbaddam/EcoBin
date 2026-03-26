@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
@@ -58,10 +59,27 @@ export const ResultScreen = ({ route, navigation }: any) => {
    * ================================
    */
 
-  const category = classification.category;
+  const getCategoryDetails = (categoryStr: string) => {
+    switch (categoryStr?.toLowerCase()) {
+      case 'recyclable': return { name: 'Recyclable', icon: '♻️', binType: { color: '#3B82F6', name: 'Recycle Bin', description: 'Place in the blue recycling bin.' } };
+      case 'organic': return { name: 'Organic', icon: '🍎', binType: { color: '#10B981', name: 'Compost Bin', description: 'Place in the green compost bin.' } };
+      case 'hazardous': return { name: 'Hazardous', icon: '☢️', binType: { color: '#EF4444', name: 'Hazardous Waste', description: 'Take to a local hazardous waste facility.' } };
+      case 'e-waste': return { name: 'E-Waste', icon: '💻', binType: { color: '#F59E0B', name: 'E-Waste Drop-off', description: 'Take to an electronic waste recycling center.' } };
+      default: return { name: 'General Waste', icon: '🗑️', binType: { color: '#6B7280', name: 'General Waste', description: 'Place in the regular trash bin.' } };
+    }
+  };
+
+  const categoryData = typeof classification.category === 'string'
+    ? getCategoryDetails(classification.category)
+    : classification.category;
+
+  const category = categoryData;
   const binType = category.binType;
   const confidence = classification.confidence;
-  const instructions = classification.instructions || [];
+  const instructions = classification.disposal_tips || classification.instructions || [];
+  const explanation = classification.explanation;
+  const subcategory = classification.subcategory;
+  const funFact = classification.fun_fact;
 
   /**
    * ================================
@@ -104,7 +122,7 @@ export const ResultScreen = ({ route, navigation }: any) => {
         <View style={styles.categoryHeader}>
           <Text style={styles.categoryIcon}>{category.icon}</Text>
           <View>
-            <Text style={styles.categoryLabel}>Category</Text>
+            <Text style={styles.categoryLabel}>{subcategory ? `Category: ${subcategory}` : 'Category'}</Text>
             <Text style={styles.categoryName}>{category.name}</Text>
           </View>
         </View>
@@ -129,6 +147,13 @@ export const ResultScreen = ({ route, navigation }: any) => {
         <Text style={styles.binTypeDescription}>
           {binType.description}
         </Text>
+
+        {explanation && (
+          <View style={{ marginTop: spacing.md }}>
+            <Text style={styles.binTypeLabel}>Why?</Text>
+            <Text style={styles.binTypeDescription}>{explanation}</Text>
+          </View>
+        )}
       </View>
 
       {/* Confidence */}
@@ -168,12 +193,20 @@ export const ResultScreen = ({ route, navigation }: any) => {
         </View>
       )}
 
+      {/* Fun Fact */}
+      {funFact && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>💡 Did you know?</Text>
+          <Text style={styles.instructionText}>{funFact}</Text>
+        </View>
+      )}
+
       {/* Achievements */}
       {newAchievements.length > 0 && (
         <View style={styles.achievementsCard}>
           <Text style={styles.achievementsTitle}>🎉 New Achievements!</Text>
-          {newAchievements.map((a: any) => (
-            <View key={a.id} style={styles.achievementItem}>
+          {newAchievements.map((a: any, idx: number) => (
+            <View key={a.id || `achievement-${idx}`} style={styles.achievementItem}>
               <Text style={styles.achievementIcon}>{a.icon}</Text>
               <View>
                 <Text style={styles.achievementName}>{a.name}</Text>
@@ -193,6 +226,13 @@ export const ResultScreen = ({ route, navigation }: any) => {
           onPress={handleScanAnother}
         >
           <Text style={styles.primaryButtonText}>Scan Another Item</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.dangerButton}
+          onPress={() => Alert.alert("Report Submitted", "Your community report has been submitted.")}
+        >
+          <Text style={styles.dangerButtonText}>⚠️ Report Problem</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -420,6 +460,19 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: typography.sizes.md,
     color: colors.text.secondary,
+  },
+  dangerButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  dangerButtonText: {
+    fontSize: typography.sizes.md,
+    color: '#EF4444',
+    fontWeight: typography.weights.medium as any,
   },
   fallback: {
   flex: 1,

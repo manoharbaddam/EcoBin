@@ -1,3 +1,107 @@
+// ─────────────────────────────────────────────
+// Firestore / API shared types
+// ─────────────────────────────────────────────
+
+export interface FirebaseUser {
+  uid: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string;
+  city: string;
+  totalPoints: number;
+  totalScans: number;
+  isAnonymous: boolean;
+  fcmToken: string;
+  badges: string[];
+}
+
+export interface ScanResult {
+  category: WasteCategory;
+  subcategory: string;
+  isRecyclable: boolean;
+  confidence: number;
+  explanation: string;
+  disposalTips: string[];
+  funFact: string;
+}
+
+export type WasteCategory =
+  | "recyclable"
+  | "non-recyclable"
+  | "hazardous"
+  | "organic"
+  | "e-waste";
+
+export interface ScanRecord {
+  id: string;
+  userId: string;
+  imageUrl: string;
+  classification: ScanResult;
+  pointsEarned: number;
+  createdAt: string;
+}
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  iconUrl: string;
+  type: "points" | "scans" | "quiz" | "reports";
+  thresholdValue: number;
+}
+
+export interface QuizQuestion {
+  id: string;
+  questionText: string;
+  imageUrl?: string;
+  options: string[];
+  correctAnswer: number;
+  category: WasteCategory;
+  difficulty: "easy" | "medium" | "hard";
+  explanation: string;
+}
+
+export interface WasteReport {
+  id: string;
+  userId: string;
+  imageUrl: string;
+  description: string;
+  locationLat: number;
+  locationLng: number;
+  city: string;
+  status: "pending" | "in_review" | "resolved";
+  adminNotes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  rank: number;
+  displayName: string;
+  totalPoints: number;
+}
+
+export interface Notification {
+  id: string;
+  userId: string | null;
+  title: string;
+  body: string;
+  type: "alert" | "reward" | "education" | "report_update";
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface GamificationProfile {
+  uid: string;
+  totalPoints: number;
+  totalScans: number;
+  badges: string[];
+  city: string;
+  displayName: string;
+}
+
+// Legacy types kept for backward compatibility
 export interface User {
   id: string;
   name: string;
@@ -5,67 +109,6 @@ export interface User {
   points: number;
   level: number;
   avatar?: string;
-}
-
-export interface WasteCategory {
-  id: string;
-  name: string;
-  description: string;
-  binType: BinType;
-  icon: string;
-}
-
-export interface BinType {
-  id: string;
-  name: string;
-  color: string;
-  description: string;
-  instructions: string[];
-}
-
-export interface ClassificationResult {
-  category: WasteCategory;
-  confidence: number;
-  imageUri: string;
-  timestamp: Date;
-  pointsEarned: number;
-  instructions: string[];
-}
-
-export interface ClassificationSession {
-  id: string;
-  userId: string;
-  result: ClassificationResult;
-  createdAt: Date;
-}
-
-export interface Challenge {
-  id: string;
-  title: string;
-  description: string;
-  progress: number;
-  target: number;
-  reward: number;
-  status: 'active' | 'completed' | 'locked';
-  icon: string;
-}
-
-export interface Badge {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  unlockedAt?: Date;
-}
-
-export interface EducationContent {
-  id: string;
-  title: string;
-  category: string;
-  description: string;
-  tips: string[];
-  didYouKnow: string;
-  icon: string;
 }
 
 export interface UserStats {
@@ -76,4 +119,14 @@ export interface UserStats {
   organicCount: number;
   hazardousCount: number;
   generalCount: number;
+}
+
+export interface EducationContent {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  tips: string[];
+  didYouKnow: string;
+  icon: string;
 }

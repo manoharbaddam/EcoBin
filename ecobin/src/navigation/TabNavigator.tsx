@@ -4,12 +4,14 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { HomeScreen } from '../screens/Home/HomeScreen';
 import { ScanStack } from './ScanStack';
 import { EducationScreen } from '../screens/Education/EducationScreen';
-import  {ProfileScreen} from '../screens/Profile/ProfileScreen';
+import { ProfileScreen } from '../screens/Profile/ProfileScreen';
+import { GamificationScreen } from '../screens/Gamification/GamificationScreen';
+import { ReportsScreen } from '../screens/Reports/ReportsScreen';
 import { colors } from '../theme';
 
 const Tab = createBottomTabNavigator();
 
-export default function TabNavigator(){
+export default function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={{
@@ -20,49 +22,63 @@ export default function TabNavigator(){
           borderTopColor: colors.divider,
           paddingTop: 8,
           paddingBottom: 8,
-          height: 60,
+          height: 64,
         },
-        headerStyle: {
-          backgroundColor: colors.primary.main,
-        },
-        headerTintColor: colors.text.inverse,
-        headerTitleStyle: {
-          fontWeight: '600',
-        },
+        headerStyle: { backgroundColor: colors.primary.main },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '700' },
       }}
     >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>🏠</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>🏠</Text>,
           headerTitle: 'EcoBin',
         }}
       />
-       <Tab.Screen
-        name="Scan"
+      <Tab.Screen
+        name="ScanTab"
         component={ScanStack}
         options={{
-          tabBarIcon: () => <Text style={{ fontSize: 24 }}>📷</Text>,
+          tabBarLabel: 'Scan',
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>📷</Text>,
           headerTitle: 'Scan Waste',
+        }}
+      />
+      <Tab.Screen
+        name="Gamification"
+        component={GamificationScreen}
+        options={{
+          tabBarLabel: 'Rewards',
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>🏆</Text>,
+          headerTitle: 'Rewards',
         }}
       />
       <Tab.Screen
         name="Education"
         component={EducationScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>📚</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>📚</Text>,
           headerTitle: 'Learn',
+        }}
+      />
+      <Tab.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={{
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>📋</Text>,
+          headerTitle: 'Reports',
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>👤</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>👤</Text>,
           headerTitle: 'Profile',
         }}
       />
     </Tab.Navigator>
   );
-};
+}

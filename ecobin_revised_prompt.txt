@@ -1,0 +1,732 @@
+You are a senior full-stack engineer. Build a complete production-ready
+project called "EcoBin - Smart Garbage Segregation System" based on
+the architecture and specifications below. Scaffold the entire project
+with all folders, files, configurations, and documentation.
+
+This is a SINGLE-REPO project. There is NO separate backend server.
+All backend logic runs on Firebase Cloud Functions (TypeScript).
+
+═══════════════════════════════════════════
+TECH STACK
+═══════════════════════════════════════════
+
+Mobile App           → React Native (Expo SDK 51+)
+Backend              → Firebase Cloud Functions v2 (TypeScript, Node 20)
+Authentication       → Firebase Auth
+                       (Email/Password + Google Sign-In + Anonymous)
+Image Classification → Google Gemini Vision API (gemini-1.5-flash)
+                       ⚠️ Images must be sent as BASE64 to Gemini.
+                       Do NOT send Firebase Storage HTTPS URLs to Gemini —
+                       it does not support them. Always convert image to
+                       base64 before calling the Gemini API.
+Education & Quiz     → Google Gemini API (text generation)
+Image Storage        → Firebase Storage
+                       ⚠️ Use uploadBytesResumable() with Blob conversion
+                       when uploading from Expo — do NOT pass raw base64
+                       string directly to Firebase Storage.
+Database             → Firebase Firestore (NoSQL)
+Notifications        → Firebase Cloud Messaging (FCM) via expo-notifications
+State Management     → Zustand
+Navigation           → Expo Router (file-based, tabs + stack)
+
+NO Django. NO PostgreSQL. NO Cloudinary. NO separate REST server.
+
+═══════════════════════════════════════════
+PROJECT STRUCTURE
+═══════════════════════════════════════════
+
+ecobin/
+├── App.tsx                        # Entry point — wraps NavigationContainer,
+│                                  # AuthContext, and connects to Firebase
+│                                  # Emulators in DEV mode automatically
+├── app.json                       # Expo config — include expo-notifications,
+│                                  # expo-camera, expo-image-picker,
+│                                  # expo-location permissions
+├── babel.config.js                # Babel config with babel-preset-expo
+├── tsconfig.json                  # Strict TypeScript config
+├── package.json                   # All 30+ dependencies pinned to
+│                                  # current stable versions (2025/2026)
+├── .env                           # Runtime env vars (gitignored)
+├── .env.example                   # Template for env vars
+│
+├── src/
+│   ├── components/                # Reusable UI components
+│   │   ├── LoadingSkeleton.tsx    # Skeleton placeholders for all screens
+│   │   ├── CategoryBadge.tsx      # Color-coded waste category pill
+│   │   ├── PointsPopup.tsx        # Animated +XX pts popup after scan
+│   │   ├── BadgeCard.tsx          # Badge (earned=color, unearned=grayscale)
+│   │   └── GuestBanner.tsx        # "Create account to save progress" banner
+│   │
+│   ├── screens/
+│   │   ├── Auth/
+│   │   │   ├── SplashScreen.tsx   # Checks onAuthStateChanged, redirects
+│   │   │   ├── AuthScreen.tsx     # Google Sign-In + Email form + Guest btn
+│   │   │   └── RegisterScreen.tsx # Email/password registration form
+│   │   ├── Home/
+│   │   │   └── HomeScreen.tsx     # Dashboard: points summary, quick actions
+│   │   ├── Scan/
+│   │   │   └── ScanScreen.tsx     # Camera capture → base64 → classifyWaste
+│   │   │                          # Cloud Function → result card with
+│   │   │                          # category, recyclable indicator,
+│   │   │                          # confidence, tips, fun fact, points anim
+│   │   ├── Gamification/
+│   │   │   └── GamificationScreen.tsx # Points counter, badge grid,
+│   │   │                              # city leaderboard (user rank highlighted)
+│   │   ├── Education/
+│   │   │   ├── EducationScreen.tsx    # Two cards: Quiz / Ask AI
+│   │   │   ├── QuizScreen.tsx         # 10 questions, progress bar,
+│   │   │   │                          # answer feedback, score summary
+│   │   │   └── AskAIScreen.tsx        # Text input → explainWasteType →
+│   │   │                              # formatted Gemini response
+│   │   ├── Reports/
+│   │   │   ├── ReportsScreen.tsx      # List of user's own reports
+│   │   │   └── SubmitReportScreen.tsx # Image + description + location →
+│   │   │                              # submitWasteReport Cloud Function
+│   │   └── Profile/
+│   │       └── ProfileScreen.tsx  # Avatar, display name, city selector,
+│   │                              # points + badge count, sign out,
+│   │                              # upgrade prompt for anonymous users
+│   │
+│   ├── navigation/
+│   │   ├── RootNavigator.tsx      # Stack: Auth stack vs Tab navigator
+│   │   │                          # based on auth state
+│   │   └── TabNavigator.tsx       # Bottom tabs: Home, Scan, Education,
+│   │                              # Gamification, Profile
+│   │
+│   ├── services/
+│   │   ├── firebase.ts            # initializeApp() with firebaseConfig,
+│   │   │                          # export: auth, db, storage, functions
+│   │   │                          # In DEV: connectAuthEmulator(),
+│   │   │                          # connectFirestoreEmulator(),
+│   │   │                          # connectFunctionsEmulator(),
+│   │   │                          # connectStorageEmulator()
+│   │   ├── functions.ts           # httpsCallable() wrappers for every
+│   │   │                          # Cloud Function with typed params/returns
+│   │   └── gemini.ts              # Direct Gemini API client (for AskAI
+│   │                              # explain feature from mobile if needed)
+│   │
+│   ├── context/
+│   │   └── AuthContext.tsx        # onAuthStateChanged listener,
+│   │                              # provides: user, isAnonymous,
+│   │                              # signInWithGoogle(), signInWithEmail(),
+│   │                              # registerWithEmail(), signInAnonymously(),
+│   │                              # signOut(), upgradeAnonymousAccount()
+│   │                              # ⚠️ Google Sign-In: use
+│   │                              # @react-native-google-signin/google-signin
+│   │                              # with Expo Dev Client.
+│   │                              # Do NOT use expo-auth-session for Google
+│   │                              # Sign-In — it is deprecated for this use.
+│   │
+│   ├── store/
+│   │   ├── authStore.ts           # Zustand: user, isAnonymous, loading
+│   │   ├── gamificationStore.ts   # Zustand: points, badges[], leaderboard[]
+│   │   ├── educationStore.ts      # Zustand: questions[], currentIdx,
+│   │   │                          # answers[], score, quizComplete
+│   │   └── reportStore.ts         # Zustand: userReports[], submitting
+│   │
+│   ├── theme/
+│   │   └── index.ts               # Colors, typography, spacing constants
+│   │
+│   ├── types/
+│   │   └── index.ts               # Shared TypeScript interfaces:
+│   │                              # User, ScanResult, Badge, QuizQuestion,
+│   │                              # WasteReport, Notification, etc.
+│   │
+│   └── constants/
+│       ├── routes.ts              # Screen name constants
+│       └── wasteCategories.ts     # Category colors, icons, point values:
+│                                  # recyclable=20, non-recyclable=10,
+│                                  # hazardous=30, e-waste=25, organic=10
+│
+├── functions/                     # Firebase Cloud Functions
+│   ├── src/
+│   │   ├── apps/
+│   │   │   ├── classification/
+│   │   │   │   └── index.ts       # callable: classifyWaste
+│   │   │   │                      # - Receive base64 image from mobile
+│   │   │   │                      # - Convert base64 → Buffer → upload to
+│   │   │   │                      #   Firebase Storage via admin SDK
+│   │   │   │                      # - Send base64 data (NOT storage URL)
+│   │   │   │                      #   to Gemini Vision API as inlineData
+│   │   │   │                      # - Parse JSON from Gemini response
+│   │   │   │                      # - Save to scanRecords/{scanId}
+│   │   │   │                      # - Award points, update user totalPoints
+│   │   │   │                      # - Call checkAndAwardBadges()
+│   │   │   │                      # - Return classification + pointsEarned
+│   │   │   │
+│   │   │   ├── gamification/
+│   │   │   │   └── index.ts       # callable: getGamificationProfile
+│   │   │   │                      # callable: getLeaderboard (filter by city,
+│   │   │   │                      #   order totalPoints desc, top 50)
+│   │   │   │                      # callable: getAllBadges
+│   │   │   │                      # internal: checkAndAwardBadges(userId)
+│   │   │   │                      # ⚠️ Leaderboard query needs composite index:
+│   │   │   │                      #   users collection → city ASC +
+│   │   │   │                      #   totalPoints DESC
+│   │   │   │                      #   Define in firestore.indexes.json
+│   │   │   │
+│   │   │   ├── education/
+│   │   │   │   └── index.ts       # callable: getQuizQuestions (10 random,
+│   │   │   │                      #   optional difficulty filter)
+│   │   │   │                      # callable: submitQuizAnswers
+│   │   │   │                      # callable: explainWasteType (Gemini text)
+│   │   │   │
+│   │   │   ├── reports/
+│   │   │   │   └── index.ts       # callable: submitWasteReport
+│   │   │   │                      # callable: getUserReports
+│   │   │   │
+│   │   │   ├── notifications/
+│   │   │   │   └── index.ts       # callable: getUserNotifications
+│   │   │   │                      # callable: markNotificationRead
+│   │   │   │                      # http: broadcastNotification (admin only)
+│   │   │   │
+│   │   │   └── admin/
+│   │   │       └── index.ts       # http: getAdminStats
+│   │   │                          # http: getAllUsers
+│   │   │                          # http: getAdminReports
+│   │   │                          # http: updateReportStatus
+│   │   │                          # ⚠️ All admin HTTP functions must verify
+│   │   │                          #   admin custom claim on Firebase Auth token
+│   │   │                          #   Use: admin.auth().verifyIdToken(token)
+│   │   │                          #   then check decodedToken.admin === true
+│   │   │                          #   Set claim via: seedData function or
+│   │   │                          #   Firebase Admin SDK script
+│   │   │
+│   │   ├── auth/
+│   │   │   └── index.ts           # onUserCreate Auth trigger (functions v1
+│   │   │                          #   syntax: functions.auth.user().onCreate)
+│   │   │                          # Auto-creates users/{uid} Firestore doc
+│   │   │                          # callable: syncUserProfile
+│   │   │                          # (update city, fcmToken, displayName)
+│   │   │
+│   │   ├── seed/
+│   │   │   └── index.ts           # http: seedData (one-time setup)
+│   │   │                          # Seeds Firestore with:
+│   │   │                          # - 6 badge documents
+│   │   │                          # - 30+ quiz questions
+│   │   │                          # - Sets admin custom claim for a given UID
+│   │   │                          # Protect with a secret key in env
+│   │   │
+│   │   └── index.ts               # Re-exports all functions
+│   │
+│   ├── package.json               # functions dependencies — use exact versions:
+│   │                              # firebase-admin@^12, firebase-functions@^6,
+│   │                              # @google/generative-ai@^0.21.0
+│   │
+│   └── tsconfig.json              # "strict": true, "module": "commonjs",
+│                                  # "target": "es2020", outDir: "./lib"
+│
+└── assets/                        # App icons, splash images
+
+═══════════════════════════════════════════
+FIRESTORE DATABASE SCHEMA
+═══════════════════════════════════════════
+
+1. users/{uid}
+   - uid: string
+   - email: string
+   - displayName: string
+   - avatarUrl: string
+   - city: string (default: "Guest" for anonymous)
+   - totalPoints: number (default: 0)
+   - isAnonymous: boolean
+   - fcmToken: string
+   - createdAt: Timestamp
+   - updatedAt: Timestamp
+
+2. scanRecords/{scanId}
+   - userId: string
+   - imageUrl: string (Firebase Storage download URL)
+   - classification: map
+       { category, subcategory, isRecyclable,
+         confidence, explanation, disposalTips[], funFact }
+   - pointsEarned: number
+   - createdAt: Timestamp
+
+3. badges/{badgeId}
+   - name: string
+   - description: string
+   - iconUrl: string
+   - type: "points" | "scans" | "quiz" | "reports"
+   - thresholdValue: number
+
+4. userBadges/{userBadgeId}
+   - userId: string
+   - badgeId: string
+   - earnedAt: Timestamp
+
+5. quizQuestions/{questionId}
+   - questionText: string
+   - imageUrl: string (optional)
+   - options: string[] (4 items)
+   - correctAnswer: number (0–3)
+   - category: "recyclable"|"non-recyclable"|"hazardous"|"organic"|"e-waste"
+   - difficulty: "easy"|"medium"|"hard"
+   - explanation: string
+
+6. quizAttempts/{attemptId}
+   - userId: string
+   - questionId: string
+   - selectedAnswer: number
+   - isCorrect: boolean
+   - pointsEarned: number
+   - attemptedAt: Timestamp
+
+7. wasteReports/{reportId}
+   - userId: string
+   - imageUrl: string (Firebase Storage URL)
+   - description: string
+   - locationLat: number
+   - locationLng: number
+   - city: string
+   - status: "pending"|"in_review"|"resolved"
+   - adminNotes: string
+   - createdAt: Timestamp
+   - updatedAt: Timestamp
+
+8. notifications/{notificationId}
+   - userId: string | null (null = broadcast)
+   - title: string
+   - body: string
+   - type: "alert"|"reward"|"education"|"report_update"
+   - isRead: boolean
+   - createdAt: Timestamp
+
+═══════════════════════════════════════════
+FIRESTORE INDEXES (firestore.indexes.json)
+═══════════════════════════════════════════
+
+Define composite indexes for:
+1. users: city ASC + totalPoints DESC
+   (required for leaderboard query)
+2. scanRecords: userId ASC + createdAt DESC
+3. wasteReports: userId ASC + createdAt DESC
+4. wasteReports: status ASC + createdAt DESC (admin filter)
+5. notifications: userId ASC + createdAt DESC
+6. quizAttempts: userId ASC + attemptedAt DESC
+
+WITHOUT these indexes, Firestore queries will throw errors
+and return no data. These MUST be deployed before testing.
+Deploy with: firebase deploy --only firestore:indexes
+
+═══════════════════════════════════════════
+FIRESTORE SECURITY RULES (firestore.rules)
+═══════════════════════════════════════════
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: read/write own doc only
+    match /users/{uid} {
+      allow read, write: if request.auth != null
+                          && request.auth.uid == uid;
+    }
+
+    // Scan records: create if auth; read own only
+    match /scanRecords/{id} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null
+                   && resource.data.userId == request.auth.uid;
+    }
+
+    // Badges: read for all auth users; write via Functions only
+    match /badges/{id} {
+      allow read: if request.auth != null;
+      allow write: if false; // Cloud Functions admin SDK only
+    }
+
+    // User badges: read own only; write via Functions only
+    match /userBadges/{id} {
+      allow read: if request.auth != null
+                   && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Quiz questions: read for all auth; write via Functions only
+    match /quizQuestions/{id} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Quiz attempts: create if auth; read own only
+    match /quizAttempts/{id} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null
+                   && resource.data.userId == request.auth.uid;
+    }
+
+    // Waste reports: create if auth; read own only
+    match /wasteReports/{id} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null
+                   && resource.data.userId == request.auth.uid;
+    }
+
+    // Notifications: read own only
+    match /notifications/{id} {
+      allow read: if request.auth != null
+                   && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+  }
+}
+
+═══════════════════════════════════════════
+FIREBASE STORAGE RULES (storage.rules)
+═══════════════════════════════════════════
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /scans/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                    && request.auth.uid == userId;
+    }
+    match /reports/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                    && request.auth.uid == userId;
+    }
+  }
+}
+
+═══════════════════════════════════════════
+GEMINI INTEGRATION — CRITICAL DETAILS
+═══════════════════════════════════════════
+
+In the classifyWaste Cloud Function:
+
+1. Receive base64 string from mobile client
+2. Call Gemini using inlineData (NOT a URL):
+
+   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+   const result = await model.generateContent([
+     {
+       inlineData: {
+         mimeType: "image/jpeg",
+         data: base64String   // ← raw base64, no prefix
+       }
+     },
+     { text: "Analyze this waste image. Return ONLY a valid JSON object with no markdown fencing, no explanation outside the JSON. Fields: category (recyclable/non-recyclable/hazardous/organic/e-waste), subcategory (string), isRecyclable (boolean), confidence (0-100), explanation (2 sentences), disposalTips (array of 3 strings), funFact (string)" }
+   ]);
+
+3. Extract text: result.response.text()
+4. Strip any accidental markdown fences before JSON.parse()
+5. Handle parse errors gracefully — return 500 with clear message
+
+On the mobile ScanScreen:
+- Use expo-image-picker or expo-camera
+- Convert selected image to base64:
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64
+    });
+- Call httpsCallable(functions, 'classifyWaste')({ image: base64 })
+- Show loading skeleton during the 5–10 second wait
+- On success: show result card with animation
+
+═══════════════════════════════════════════
+GOOGLE SIGN-IN — CRITICAL DETAILS
+═══════════════════════════════════════════
+
+⚠️ Do NOT use expo-auth-session or expo-web-browser for
+Google Sign-In. These approaches are deprecated and broken
+for native Firebase Google Auth in 2025/2026.
+
+Use @react-native-google-signin/google-signin:
+
+  import {
+    GoogleSignin,
+    statusCodes
+  } from '@react-native-google-signin/google-signin';
+
+  GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+
+  const signInWithGoogle = async () => {
+    await GoogleSignin.hasPlayServices();
+    const userInfo = await GoogleSignin.signIn();
+    const { idToken } = userInfo.data;
+    const credential = GoogleAuthProvider.credential(idToken);
+    await signInWithCredential(auth, credential);
+  };
+
+This requires Expo Dev Client (not Expo Go).
+Note in SETUP.md: run `npx expo run:ios` or `npx expo run:android`
+to use Google Sign-In on device.
+
+═══════════════════════════════════════════
+GAMIFICATION LOGIC
+═══════════════════════════════════════════
+
+Points awarded per classification:
+  recyclable      → 20 pts
+  non-recyclable  → 10 pts
+  hazardous       → 30 pts (awareness bonus)
+  e-waste         → 25 pts
+  organic         → 10 pts
+
+Quiz: 5 pts per correct answer
+
+Badge definitions (seed these in seedData):
+  1. "First Scan"          → type: scans,   thresholdValue: 1
+  2. "Eco Starter"         → type: points,  thresholdValue: 100
+  3. "Green Warrior"       → type: points,  thresholdValue: 500
+  4. "Recycling Champion"  → type: points,  thresholdValue: 1000
+  5. "Quiz Master"         → type: quiz,    thresholdValue: 10
+                              (10 correct quiz answers total)
+  6. "Problem Reporter"    → type: reports, thresholdValue: 5
+                              (5 waste reports submitted)
+
+checkAndAwardBadges(userId) internal function:
+  - Count user's scanRecords, quizAttempts (isCorrect), wasteReports
+  - Get user's totalPoints
+  - Compare against all badge thresholds
+  - For each un-earned badge that threshold is met: create userBadges doc
+  - Send FCM notification: "You earned the [badge] badge! 🎉"
+
+Leaderboard:
+  - Query users where city == targetCity
+  - Order by totalPoints DESC, limit 50
+  - Anonymous users (city = "Guest") excluded from leaderboard
+
+═══════════════════════════════════════════
+MOBILE APP FEATURES — DETAILED
+═══════════════════════════════════════════
+
+Auth Flow:
+  SplashScreen:
+    - Subscribe to onAuthStateChanged
+    - If user exists → navigate to Tab navigator
+    - If no user → navigate to AuthScreen
+    - Show app logo + loading indicator during check
+
+  AuthScreen:
+    - Google Sign-In button (calls signInWithGoogle)
+    - Email/Password toggle form (Login / Register)
+    - "Continue as Guest" → signInAnonymously()
+    - Anonymous users see GuestBanner on Home, Gamification,
+      Reports screens urging account creation
+
+Scan Screen:
+  - Two buttons: "Take Photo" (expo-camera) /
+    "Choose from Gallery" (expo-image-picker)
+  - Convert image → base64 → call classifyWaste
+  - LoadingSkeleton during API call
+  - Result card shows:
+      CategoryBadge (color-coded by category)
+      ♻️ / ⚠️ isRecyclable indicator
+      Confidence percentage bar
+      Explanation text (2 sentences)
+      Disposal Tips (3 bullet points)
+      Fun Fact section
+      PointsPopup animation (+XX pts)
+  - "Report This Waste" button → navigate to SubmitReport
+
+Gamification Screen:
+  - Animated points counter (react-native-reanimated)
+  - BadgeCard grid: 2-column, earned=color, unearned=grayscale+lock
+  - Leaderboard list: rank number, avatar, name, points
+    User's own row highlighted in green
+
+Education Screen:
+  Quiz flow:
+    - "Take Quiz" button → fetch 10 questions → QuizScreen
+    - Progress bar (e.g., "3 / 10")
+    - Question card with optional image
+    - 4 answer buttons: tap → immediate color feedback
+      (green = correct, red = wrong), show correct answer
+    - "Next" button
+    - Score summary screen: X/10, points earned, "Play Again"
+  Ask AI flow:
+    - Text input: "e.g., old batteries, broken glass"
+    - Submit → explainWasteType Cloud Function
+    - Formatted response card with Gemini explanation
+
+Reports Screen:
+  - List of user's submitted reports
+  - Each card: thumbnail, description, status badge, date
+  - FAB button → SubmitReportScreen
+  - Anonymous users: show upgrade prompt instead
+
+Profile Screen:
+  - Avatar (initial placeholder if no photo)
+  - Display name (editable)
+  - City dropdown (for leaderboard)
+  - Total points + badge count row
+  - Sign Out button
+  - "Upgrade to full account" button for anonymous users
+
+═══════════════════════════════════════════
+ENVIRONMENT VARIABLES
+═══════════════════════════════════════════
+
+.env.example (mobile root):
+  EXPO_PUBLIC_FIREBASE_API_KEY=
+  EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=
+  EXPO_PUBLIC_FIREBASE_PROJECT_ID=
+  EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=
+  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+  EXPO_PUBLIC_FIREBASE_APP_ID=
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=
+  EXPO_PUBLIC_GEMINI_API_KEY=
+  EXPO_PUBLIC_USE_EMULATOR=false
+
+functions/.env.example:
+  GEMINI_API_KEY=
+  SEED_SECRET=
+  FIREBASE_PROJECT_ID=
+
+═══════════════════════════════════════════
+FIREBASE CONFIG (firebase.json)
+═══════════════════════════════════════════
+
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "auth": { "port": 9099 },
+    "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "storage": { "port": 9199 },
+    "ui": { "enabled": true, "port": 4000 }
+  }
+}
+
+═══════════════════════════════════════════
+app.json — EXPO CONFIG (required sections)
+═══════════════════════════════════════════
+
+Include all of the following plugins and permissions:
+  "plugins": [
+    "expo-router",
+    ["expo-camera", { "cameraPermission": "Allow EcoBin to use the camera" }],
+    ["expo-image-picker", { "photosPermission": "Allow EcoBin to access photos" }],
+    ["expo-location", { "locationWhenInUsePermission": "Allow EcoBin to use location" }],
+    ["expo-notifications", {
+      "icon": "./assets/notification-icon.png",
+      "color": "#4CAF50"
+    }],
+    "@react-native-google-signin/google-signin"
+  ]
+
+Set scheme: "ecobin" for deep linking.
+
+═══════════════════════════════════════════
+SEED DATA (functions/src/seed/index.ts)
+═══════════════════════════════════════════
+
+HTTP function: GET /seedData?secret=YOUR_SEED_SECRET
+
+Checks request query param `secret` against env SEED_SECRET.
+If mismatch → return 403.
+
+Seeds:
+1. badges collection (6 documents as defined above)
+2. quizQuestions collection (30 questions minimum):
+   Cover all 5 categories: recyclable, non-recyclable,
+   hazardous, organic, e-waste.
+   Mix of easy (12), medium (12), hard (6).
+   Each question must have a clear explanation.
+3. Optionally: set admin custom claim on a UID passed as query param
+   (e.g., ?secret=XXX&adminUid=YYY)
+
+═══════════════════════════════════════════
+ALL API RESPONSES — CONSISTENT FORMAT
+═══════════════════════════════════════════
+
+Every Cloud Function (callable and HTTP) returns:
+
+Success:
+  { success: true, data: { ...payload }, message: "string" }
+
+Error:
+  { success: false, error: "Human-readable message", code: "ERROR_CODE" }
+
+Callable functions throw HttpsError for auth failures:
+  throw new HttpsError('unauthenticated', 'Login required');
+  throw new HttpsError('permission-denied', 'Admin access required');
+
+═══════════════════════════════════════════
+DOCUMENTATION (docs/)
+═══════════════════════════════════════════
+
+1. docs/README.md
+   - Project overview + ASCII architecture diagram
+   - Full feature list
+   - Quick start: 3 commands to run everything locally
+     (firebase emulators:start, npm start, seed endpoint)
+
+2. docs/SETUP.md
+   Prerequisites: Node 20, Firebase CLI, Expo CLI, EAS CLI,
+                  Xcode (iOS) or Android Studio
+   Step-by-step:
+   a) Firebase Console: create project, enable Auth
+      (Email/Password, Google, Anonymous), Firestore,
+      Storage, Functions (Blaze plan required for Functions)
+   b) Enable Google Sign-In: add SHA-1 fingerprint for Android,
+      download google-services.json and GoogleService-Info.plist
+   c) Gemini API key from Google AI Studio (aistudio.google.com)
+   d) Fill in .env from .env.example
+   e) Fill in functions/.env from functions/.env.example
+   f) Deploy: firebase deploy --only functions,firestore,storage
+   g) Seed data: curl http://localhost:5001/.../seedData?secret=XXX
+   h) Run mobile: npx expo start
+   i) For Google Sign-In on device: npx expo run:ios
+      or npx expo run:android (requires Dev Client)
+
+3. docs/API.md
+   Every Cloud Function with:
+   - Function name and type (callable / http)
+   - Auth requirement
+   - Request payload (TypeScript interface)
+   - Response payload (TypeScript interface)
+   - Example request and response JSON
+
+4. docs/DATABASE_SCHEMA.md
+   All Firestore collections with:
+   - Field names, types, descriptions
+   - Required vs optional fields
+   - Example document JSON
+   - Index requirements
+
+═══════════════════════════════════════════
+ADDITIONAL REQUIREMENTS
+═══════════════════════════════════════════
+
+- All TypeScript must compile with 0 errors (strict mode)
+- All npm packages must be current stable versions (no deprecated)
+- Use react-native-reanimated for points popup animation
+- Use react-native-svg or Victory Native for any charts
+- Loading skeletons on all screens that fetch data
+- Anonymous users: city = "Guest", excluded from leaderboard,
+  cannot submit reports or view leaderboard
+- GuestBanner component shown on relevant screens
+- All Cloud Functions handle errors and never crash silently
+- firebase emulators:start must work for full local dev
+- In DEV mode, mobile app auto-connects to all emulators
+- Run `npm audit` in both root and functions/ — 0 vulnerabilities
+- No hardcoded API keys anywhere — always from process.env
+
+Build order:
+1. Firebase config + rules + indexes
+2. Cloud Functions (seed → auth → classification →
+   gamification → education → reports → notifications → admin)
+3. Mobile App (firebase.ts → AuthContext → navigation →
+   auth screens → scan → gamification → education →
+   reports → profile → components)
+4. Documentation
+
+Do not skip any file. Generate complete, working code
+for every file — no placeholders, no TODOs.

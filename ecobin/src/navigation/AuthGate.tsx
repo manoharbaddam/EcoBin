@@ -3,9 +3,10 @@ import { View, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import AuthStack from './AuthStack';
 import AppTabs from './TabNavigator';
+import AdminTabs from './AdminTabs';
 
 export default function AuthGate() {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
 
   if (loading) {
     return (
@@ -21,5 +22,9 @@ export default function AuthGate() {
     );
   }
 
-  return user ? <AppTabs /> : <AuthStack />;
+  if (user) {
+    return isAdmin ? <AdminTabs /> : <AppTabs />;
+  }
+
+  return <AuthStack />;
 }

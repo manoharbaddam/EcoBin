@@ -5,14 +5,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography } from '../../theme';
 import { Button } from '../../components/common/Button/Button';
 import { LoadingSpinner } from '../../components/common/Loading/LoadingSpinner';
-//import { classificationService } from '../../services/mock/classificationService';
-import { userService } from '../../services/mock/userService';
-import { classificationService } from '../../services/gemini/classificationService';
+import { classifyWasteImage } from '../../services/scan.service';
 
 
 export const ScanScreen = ({ navigation }: any) => {
   const [permission, requestPermission] = useCameraPermissions();
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<{uri: string, base64: string} | null>(null);
   const [isClassifying, setIsClassifying] = useState(false);
 
   const handleTakePicture = async () => {
@@ -21,10 +19,11 @@ export const ScanScreen = ({ navigation }: any) => {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
+      base64: true,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setCapturedImage(result.assets[0].uri);
+    if (!result.canceled && result.assets[0] && result.assets[0].base64) {
+      setCapturedImage({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
     }
   };
 
@@ -34,26 +33,67 @@ export const ScanScreen = ({ navigation }: any) => {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
+      base64: true,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setCapturedImage(result.assets[0].uri);
+    if (!result.canceled && result.assets[0] && result.assets[0].base64) {
+      setCapturedImage({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
     }
   };
 
   const handleClassify = async () => {
-    if (!capturedImage) return;
+    if (!capturedImage?.base64) {
+      Alert.alert('Error', 'No image captured. Please take a photo first.');
+      return;
+    }
 
     setIsClassifying(true);
     try {
-      const result = await classificationService.classify(capturedImage);
-      classificationService.addSession(result);
-      userService.updatePoints(result.pointsEarned);
-      userService.incrementScans(result.category.id);
+      let finalImageUrl = undefined;
+      const cloudName = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
-      navigation.navigate('Result', { result });
-    } catch (error) {
-      Alert.alert('Error', 'Failed to classify image. Please try again.');
+      // Upload to Cloudinary if configured
+      if (cloudName && uploadPreset) {
+        try {
+          const dataUri = `data:image/jpeg;base64,${capturedImage.base64}`;
+          const formData = new FormData();
+          formData.append('file', dataUri);
+          formData.append('upload_preset', uploadPreset);
+          formData.append('cloud_name', cloudName);
+
+          const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const uploadData = await uploadRes.json();
+          if (uploadRes.ok) {
+            finalImageUrl = uploadData.secure_url;
+          } else {
+            console.warn('Cloudinary upload failed:', uploadData.error?.message);
+          }
+        } catch (uploadErr) {
+          console.error('Failed to upload image before classification:', uploadErr);
+        }
+      }
+
+      const response = await classifyWasteImage(capturedImage.base64, finalImageUrl);
+      
+      if (!response?.data) {
+        throw new Error('Invalid response from classification service');
+      }
+
+      navigation.navigate('Result', { 
+        classification: response.data, 
+        pointsEarned: response.pointsAwarded || 0, 
+        newAchievements: response.newBadges || [],
+        imageUri: capturedImage.uri 
+      });
+    } catch (error: any) {
+      console.error('Classification error:', error);
+      const errorMessage = error?.message || 'Failed to classify image. Please ensure you are logged in and try again.';
+      Alert.alert('Classification Error', errorMessage);
     } finally {
       setIsClassifying(false);
       setCapturedImage(null);
@@ -89,7 +129,7 @@ export const ScanScreen = ({ navigation }: any) => {
   if (capturedImage) {
     return (
       <View style={styles.container}>
-        <Image source={{ uri: capturedImage }} style={styles.preview} />
+        <Image source={{ uri: capturedImage.uri }} style={styles.preview} />
         <View style={styles.previewActions}>
           <Button title="Retake" onPress={handleRetake} variant="outline" />
           <Button title="Classify" onPress={handleClassify} />

@@ -16,7 +16,7 @@ import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 
 export default function LoginScreen({ navigation }: any) {
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle, signInAsGuest } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,6 +33,32 @@ export default function LoginScreen({ navigation }: any) {
       // AuthGate handles navigation
     } catch (error: any) {
       Alert.alert('Login Failed', error.message || 'Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      await signInWithGoogle();
+    } catch (error: any) {
+      if (Platform.OS !== 'web') {
+        Alert.alert('Google Sign-In', 'Google Sign-In is only fully configured for web in this demo. Try Continue as Guest.');
+      } else {
+        Alert.alert('Google Sign-In Failed', error.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    try {
+      setLoading(true);
+      await signInAsGuest();
+    } catch (error: any) {
+      Alert.alert('Guest Sign-In Failed', error.message);
     } finally {
       setLoading(false);
     }
@@ -94,6 +120,28 @@ export default function LoginScreen({ navigation }: any) {
             disabled={loading}
           >
             <Text style={styles.signupButtonText}>Create New Account</Text>
+          </TouchableOpacity>
+
+          <View style={styles.dividerContainer}>
+            <View style={styles.divider} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.divider} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.googleButton}
+            onPress={handleGoogleSignIn}
+            disabled={loading}
+          >
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={handleGuestSignIn}
+            disabled={loading}
+          >
+            <Text style={styles.guestButtonText}>Continue as Guest</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -177,5 +225,45 @@ const styles = StyleSheet.create({
     color: colors.primary.main,
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.semibold as any,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.lg,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    marginHorizontal: spacing.md,
+    color: colors.text.secondary,
+    fontSize: typography.sizes.sm,
+  },
+  googleButton: {
+    backgroundColor: '#4285F4',
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  googleButtonText: {
+    color: '#ffffff',
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.semibold as any,
+  },
+  guestButton: {
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  guestButtonText: {
+    color: colors.text.primary,
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.medium as any,
   },
 });

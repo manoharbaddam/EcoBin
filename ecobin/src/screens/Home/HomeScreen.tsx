@@ -1,42 +1,66 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 import { Card } from '../../components/common/Card/Card';
 import { Badge } from '../../components/common/Badge/Badge';
-import { userService } from '../../services/mock/userService';
-import { classificationService } from '../../services/mock/classificationService';
-import { User, UserStats, ClassificationSession } from '../../types';
-import { scanService } from '../../services/firestore/scan.service';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../services/firebase';
+import { doc, onSnapshot, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 
 export const HomeScreen = ({ navigation }: any) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [recentScans, setRecentScans] = useState<ClassificationSession[]>([]);
+  const { user } = useAuth();
+  const [userData, setUserData] = useState<any>(null);
+  const [recentScans, setRecentScans] = useState<any[]>([]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!user) return;
 
-  const loadData = async () => {
-    const userData = await userService.getUser();
-    const statsData = await userService.getStats();
-    const history = await classificationService.getHistory();
-    setUser(userData);
-    setStats(statsData);
-    setRecentScans(history.slice(0, 3));
-  };
+    // Listen to user document
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setUserData(docSnap.data());
+      }
+    });
 
-  if (!user || !stats) return null;
+    // Fetch recent scans independently
+    const fetchScans = async () => {
+      try {
+        // Query the correct subcollection: users/{uid}/scans
+        const q = query(
+          collection(db, 'users', user.uid, 'scans'),
+          orderBy('createdAt', 'desc'),
+          limit(3)
+        );
+        const snap = await getDocs(q);
+        const scans = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setRecentScans(scans);
+      } catch (err) {
+        // Index might not be ready, ignore for MVP
+        console.log('No recent scans found or index building');
+      }
+    };
+    fetchScans();
+
+    return () => unsub();
+  }, [user]);
+
+  if (!user) return null;
+
+  const totalPoints = userData?.totalPoints || 0;
+  // Calculate level based on points (1 level per 100 points)
+  const level = Math.floor(totalPoints / 100) + 1;
+  const streak = userData?.streak || 1; // Default to 1 day streak for MVP
+  const totalScans = userData?.totalScans || 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Hello, {user.name}! 👋</Text>
+          <Text style={styles.greeting}>Hello, {userData?.displayName || 'Eco Warrior'}! 👋</Text>
           <Text style={styles.subtitle}>Let's make the planet greener</Text>
         </View>
         <View style={styles.pointsBadge}>
-          <Text style={styles.pointsText}>⭐ {user.points}</Text>
+          <Text style={styles.pointsText}>⭐ {totalPoints}</Text>
         </View>
       </View>
 
@@ -44,15 +68,15 @@ export const HomeScreen = ({ navigation }: any) => {
         <Text style={styles.cardTitle}>Your Impact</Text>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{stats.totalScans}</Text>
+            <Text style={styles.statValue}>{totalScans}</Text>
             <Text style={styles.statLabel}>Total Scans</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{stats.streak}</Text>
+            <Text style={styles.statValue}>{streak}</Text>
             <Text style={styles.statLabel}>Day Streak</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{user.level}</Text>
+            <Text style={styles.statValue}>{level}</Text>
             <Text style={styles.statLabel}>Level</Text>
           </View>
         </View>
@@ -63,19 +87,19 @@ export const HomeScreen = ({ navigation }: any) => {
         <View style={styles.categoryList}>
           <View style={styles.categoryItem}>
             <Badge label="♻️ Recyclable" color={colors.bins.recyclable} />
-            <Text style={styles.categoryCount}>{stats.recyclableCount}</Text>
+            <Text style={styles.categoryCount}>{userData?.recyclableCount || 0}</Text>
           </View>
           <View style={styles.categoryItem}>
             <Badge label="🌱 Organic" color={colors.bins.organic} />
-            <Text style={styles.categoryCount}>{stats.organicCount}</Text>
+            <Text style={styles.categoryCount}>{userData?.organicCount || 0}</Text>
           </View>
           <View style={styles.categoryItem}>
             <Badge label="⚠️ Hazardous" color={colors.bins.hazardous} />
-            <Text style={styles.categoryCount}>{stats.hazardousCount}</Text>
+            <Text style={styles.categoryCount}>{userData?.hazardousCount || 0}</Text>
           </View>
           <View style={styles.categoryItem}>
             <Badge label="🗑️ General" color={colors.bins.general} />
-            <Text style={styles.categoryCount}>{stats.generalCount}</Text>
+            <Text style={styles.categoryCount}>{userData?.generalCount || 0}</Text>
           </View>
         </View>
       </Card>
@@ -97,14 +121,18 @@ export const HomeScreen = ({ navigation }: any) => {
           {recentScans.map((session) => (
             <Card key={session.id} style={styles.scanItem}>
               <View style={styles.scanContent}>
-                <Text style={styles.scanEmoji}>{session.result.category.icon}</Text>
+                {session.imageUrl ? (
+                  <Image source={{ uri: session.imageUrl }} style={{ width: 44, height: 44, borderRadius: 8, marginRight: 4 }} />
+                ) : (
+                  <Text style={styles.scanEmoji}>{session.category?.icon || '🗑️'}</Text>
+                )}
                 <View style={styles.scanDetails}>
-                  <Text style={styles.scanCategory}>{session.result.category.name}</Text>
+                  <Text style={styles.scanCategory}>{session.category?.name || 'Unknown'}</Text>
                   <Text style={styles.scanTime}>
-                    {new Date(session.createdAt).toLocaleDateString()}
+                    {new Date(session.createdAt || Date.now()).toLocaleDateString()}
                   </Text>
                 </View>
-                <Text style={styles.scanPoints}>+{session.result.pointsEarned} pts</Text>
+                <Text style={styles.scanPoints}>+{session.pointsEarned || 0} pts</Text>
               </View>
             </Card>
           ))}
@@ -121,6 +149,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
+    paddingBottom: 100,
   },
   header: {
     flexDirection: 'row',

@@ -1,7 +1,5 @@
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { getApp } from "firebase/app";
-
-const functions = getFunctions(getApp());
+import { httpsCallable } from "firebase/functions";
+import { functions } from "./firebase";
 
 export const submitScan = async (
   wasteType: string,
@@ -10,4 +8,10 @@ export const submitScan = async (
   const createScan = httpsCallable(functions, "createScan");
   const result = await createScan({ wasteType, confidence });
   return result.data;
+};
+
+export const classifyWasteImage = async (imageBase64: string, imageUrl?: string) => {
+  const classifyWaste = httpsCallable(functions, "classifyWaste");
+  const result = await classifyWaste({ imageBase64, imageUrl });
+  return result.data as any; // { success, data, pointsAwarded, newBadges }
 };

@@ -12,8 +12,8 @@ import {
 import { colors, spacing, typography } from '../../theme';
 import { Card } from '../../components/common/Card/Card';
 import { educationService } from '../../services/mock/educationService';
-import { chatService } from '../../services/gemini/chatService';
 import { EducationContent } from '../../types';
+import { askEcoAssistant, fetchQuizQuestions, submitQuizAnswers } from '../../services/education.service';
 
 export const EducationScreen = () => {
   const [content, setContent] = useState<EducationContent[]>([]);
@@ -21,6 +21,14 @@ export const EducationScreen = () => {
   const [messages, setMessages] = useState<{ from: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [isChatActive, setIsChatActive] = useState(false);
+  
+  const [isQuizActive, setIsQuizActive] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
+  const [quizResult, setQuizResult] = useState<any>(null);
+  const [quizLoading, setQuizLoading] = useState(false);
+  
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -45,9 +53,56 @@ export const EducationScreen = () => {
     setInput('');
     setLoading(true);
 
-    const botReply = await chatService.sendMessage(userMsg.text);
-    setMessages((prev) => [...prev, { from: 'bot', text: botReply }]);
+    try {
+      const res = await askEcoAssistant(userMsg.text);
+      setMessages((prev) => [...prev, { from: 'bot', text: res.explanation || "I couldn't process that." }]);
+    } catch {
+      setMessages((prev) => [...prev, { from: 'bot', text: "Error reaching Eco Assistant." }]);
+    }
     setLoading(false);
+  };
+
+  const startQuiz = async () => {
+    setIsQuizActive(true);
+    setQuizLoading(true);
+    try {
+      const questions = await fetchQuizQuestions();
+      setQuizQuestions(questions || []);
+    } catch (e) {
+      console.error(e);
+    }
+    setQuizLoading(false);
+  };
+
+  const handleSelectOption = (index: number) => {
+    const qid = quizQuestions[quizIndex].id;
+    setQuizAnswers(prev => ({ ...prev, [qid]: index }));
+  };
+
+  const handleNextQuestion = () => {
+    if (quizIndex < quizQuestions.length - 1) {
+      setQuizIndex(prev => prev + 1);
+    } else {
+      finishQuiz();
+    }
+  };
+
+  const finishQuiz = async () => {
+    setQuizLoading(true);
+    try {
+      const result = await submitQuizAnswers(quizAnswers);
+      setQuizResult(result);
+    } catch (e) {
+      console.error(e);
+    }
+    setQuizLoading(false);
+  };
+
+  const closeQuiz = () => {
+    setIsQuizActive(false);
+    setQuizIndex(0);
+    setQuizAnswers({});
+    setQuizResult(null);
   };
 
   const handleCloseChat = () => {
@@ -60,15 +115,20 @@ export const EducationScreen = () => {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* 📚 Educational Content (hidden during chat) */}
-      {!isChatActive && (
+      {/* 📚 Educational Content (hidden during chat/quiz) */}
+      {!isChatActive && !isQuizActive && (
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>Learn About Waste</Text>
+            <Text style={styles.title}>Education Center</Text>
             <Text style={styles.subtitle}>
-              Discover how to properly sort and dispose of different types of waste
+              Take a quiz or ask the Eco Assistant!
             </Text>
           </View>
+
+          <TouchableOpacity style={styles.quizBanner} onPress={startQuiz}>
+            <Text style={styles.quizBannerTitle}>🧠 Take the Waste Quiz</Text>
+            <Text style={styles.quizBannerSub}>Test your knowledge and earn points!</Text>
+          </TouchableOpacity>
 
           {content.map((item) => (
             <Card key={item.id} style={styles.card}>
@@ -98,6 +158,117 @@ export const EducationScreen = () => {
 
           <View style={{ height: 200 }} />
         </ScrollView>
+      )}
+
+      {/* 🧠 Quiz View */}
+      {isQuizActive && (
+        <View style={[styles.fullScreenChat, { paddingTop: 50, paddingHorizontal: spacing.md }]}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatHeaderTitle}>Waste Quiz 📝</Text>
+            <TouchableOpacity onPress={closeQuiz} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView contentContainerStyle={{ paddingVertical: spacing.lg }}>
+            {quizLoading ? (
+              <Text style={{ textAlign: 'center', marginVertical: 40, ...typography.body }}>Loading...</Text>
+            ) : quizResult ? (
+              <View style={{ alignItems: 'center', marginTop: 40 }}>
+                <Text style={{ fontSize: 48 }}>🎉</Text>
+                <Text style={{ ...typography.h2, marginVertical: spacing.md }}>Quiz Complete!</Text>
+                <Text style={{ ...typography.body, marginBottom: spacing.sm }}>
+                  You got {quizResult.correctCount} out of {quizResult.totalQuestions} correct.
+                </Text>
+                <Text style={{ ...typography.h4, color: colors.primary.main, marginBottom: spacing.lg }}>
+                  Earned {quizResult.pointsEarned} points!
+                </Text>
+
+                <View style={{ width: '100%', marginTop: spacing.md, marginBottom: spacing.xl }}>
+                  <Text style={{ ...typography.h3, marginBottom: spacing.md, color: colors.text.primary }}>Review Answers</Text>
+                  {quizQuestions.map((q, idx) => {
+                    const userAnswerIdx = quizAnswers[q.id];
+                    const correctIdx = q.correctAnswer;
+                    const isCorrect = userAnswerIdx === correctIdx;
+                    
+                    return (
+                      <View key={idx} style={{ 
+                        padding: spacing.md, 
+                        backgroundColor: colors.background.primary, 
+                        borderRadius: 12, 
+                        borderWidth: 1, 
+                        borderColor: isCorrect ? '#31C48D' : '#F98080',
+                        marginBottom: spacing.md 
+                      }}>
+                        <Text style={{ ...typography.bodySmall, color: colors.text.secondary, marginBottom: 4 }}>
+                          Question {idx + 1}
+                        </Text>
+                        <Text style={{ ...typography.body, fontWeight: '600', color: colors.text.primary, marginBottom: spacing.sm }}>
+                          {q.questionText}
+                        </Text>
+                        
+                        <Text style={{ ...typography.bodySmall, color: isCorrect ? '#057A55' : '#C81E1E', marginBottom: 4 }}>
+                          Your Answer: {userAnswerIdx !== undefined ? q.options[userAnswerIdx] : 'None'} {isCorrect ? '✅' : '❌'}
+                        </Text>
+                        
+                        {!isCorrect && (
+                          <Text style={{ ...typography.bodySmall, color: '#057A55', fontWeight: '600', marginBottom: 4 }}>
+                            Correct Answer: {q.options[correctIdx]}
+                          </Text>
+                        )}
+                        
+                        <Text style={{ ...typography.caption, color: colors.text.secondary, marginTop: spacing.xs, fontStyle: 'italic' }}>
+                          💡 {q.explanation}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <TouchableOpacity style={[styles.sendButton, { width: '100%', alignItems: 'center', padding: spacing.md }]} onPress={closeQuiz}>
+                  <Text style={[styles.sendText, { fontSize: 16 }]}>Back to Education</Text>
+                </TouchableOpacity>
+              </View>
+            ) : quizQuestions.length > 0 ? (
+              <View>
+                <Text style={{ ...typography.bodySmall, color: colors.text.secondary, marginBottom: spacing.sm }}>
+                  Question {quizIndex + 1} of {quizQuestions.length}
+                </Text>
+                <Text style={{ ...typography.h3, marginBottom: spacing.xl }}>
+                  {quizQuestions[quizIndex].questionText}
+                </Text>
+                
+                {quizQuestions[quizIndex].options.map((opt: string, idx: number) => {
+                  const isSelected = quizAnswers[quizQuestions[quizIndex].id] === idx;
+                  return (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={[
+                        styles.quizOption, 
+                        isSelected && styles.quizOptionSelected
+                      ]}
+                      onPress={() => handleSelectOption(idx)}
+                    >
+                      <Text style={[styles.quizOptionText, isSelected && { color: 'white' }]}>{opt}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <TouchableOpacity 
+                  style={[styles.sendButton, { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' }]}
+                  onPress={handleNextQuestion}
+                  disabled={quizAnswers[quizQuestions[quizIndex].id] === undefined}
+                >
+                  <Text style={[styles.sendText, { fontSize: 16 }]}>
+                    {quizIndex < quizQuestions.length - 1 ? "Next" : "Submit"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={{ textAlign: 'center', marginVertical: 40, ...typography.body }}>No questions available.</Text>
+            )}
+          </ScrollView>
+        </View>
       )}
 
       {/* 🤖 Full Screen Chat View */}
@@ -180,7 +351,7 @@ export const EducationScreen = () => {
       )}
 
       {/* 💬 Sticky Chat Launcher */}
-      {!isChatActive && (
+      {!isChatActive && !isQuizActive && (
         <TouchableOpacity
           style={styles.chatLauncher}
           onPress={handleOpenChat}
@@ -238,6 +409,39 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.text.secondary,
     fontStyle: 'italic',
+  },
+  quizBanner: {
+    backgroundColor: '#DEF7EC',
+    padding: spacing.lg,
+    borderRadius: 12,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#31C48D',
+  },
+  quizBannerTitle: {
+    ...typography.h3,
+    color: '#03543F',
+    marginBottom: spacing.xs,
+  },
+  quizBannerSub: {
+    ...typography.bodySmall,
+    color: '#057A55',
+  },
+  quizOption: {
+    padding: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+    backgroundColor: colors.background.primary,
+  },
+  quizOptionSelected: {
+    backgroundColor: colors.primary.main,
+    borderColor: colors.primary.main,
+  },
+  quizOptionText: {
+    ...typography.body,
+    color: colors.text.primary,
   },
 
   // 💬 Chat UI
