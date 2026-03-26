@@ -1,4 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 
 const db = admin.firestore();
@@ -105,4 +106,68 @@ export const getUserReports = onCall(async (request) => {
   }));
 
   return { success: true, data: reports, message: "Reports fetched" };
+});
+
+// ─────────────────────────────────────────────
+// onReportStatusChanged
+// ─────────────────────────────────────────────
+export const onReportStatusChanged = onDocumentUpdated("wasteReports/{reportId}", async (event) => {
+  const oldData = event.data?.before.data();
+  const newData = event.data?.after.data();
+
+  if (!oldData || !newData) return;
+
+  // Only trigger if status changed
+  if (oldData.status === newData.status) return;
+
+  const userId = newData.userId;
+  if (!userId) return;
+
+  // Get user's tokens
+  const userSnap = await db.collection("users").doc(userId).get();
+  if (!userSnap.exists) return;
+
+  const userData = userSnap.data();
+  if (!userData) return;
+
+  const fcmToken = userData.fcmToken;
+  const expoPushToken = userData.expoPushToken;
+  
+  // Either token can be used, but since we are sending via FCM and relying on Expo API or FCM directly:
+  const targetToken = fcmToken || expoPushToken;
+  if (!targetToken) return;
+
+  const statusName = newData.status.replace("_", " ").toUpperCase();
+  const title = "Waste Report Update";
+  const body = `Your report status has been updated to: ${statusName}`;
+
+  try {
+    if (targetToken.startsWith("ExponentPushToken") || targetToken.startsWith("ExpoPushToken")) {
+      // Send via Expo Push API
+      await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Accept-encoding": "gzip, deflate",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: targetToken,
+          sound: "default",
+          title: title,
+          body: body,
+          data: { reportId: event.params.reportId, newStatus: newData.status },
+        }),
+      });
+    } else {
+      // Send via FCM directly
+      await admin.messaging().send({
+        token: targetToken,
+        notification: { title, body },
+        data: { reportId: event.params.reportId, newStatus: newData.status },
+      });
+    }
+  } catch (e) {
+    console.error("Failed to send status update push notification", e);
+  }
 });

@@ -24,6 +24,12 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#166534"
       },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.manoharbaddam.ecobin"
@@ -42,6 +48,27 @@
     },
     "updates": {
       "url": "https://u.expo.dev/a103cd4e-a50a-4818-8041-ce0083bcde4c"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow EcoBin to use your location to submit exact waste collection coordinates."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow EcoBin to access your camera to take pictures of waste."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow EcoBin to access your gallery to upload pictures of waste.",
+          "cameraPermission": "Allow EcoBin to access your camera to take pictures of waste."
+        }
+      ]
+    ]
   }
 }
