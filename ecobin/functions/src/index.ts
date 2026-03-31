@@ -1,4 +1,13 @@
+import * as dotenv from "dotenv";
 import * as admin from "firebase-admin";
+
+// Load .env variables first - this ensures GEMINI_API_KEY is available
+try {
+  dotenv.config();
+} catch (e) {
+  // Dotenv might not be available or .env might not exist in production
+  console.log("Note: .env file not loaded (this is normal in production)");
+}
 
 admin.initializeApp();
 

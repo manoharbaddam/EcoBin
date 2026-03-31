@@ -8,3 +8,8 @@ typings/
 # Node.js dependency directory
 node_modules/
 *.local
+
+# Environment variables — NEVER commit these (contains secret API keys)
+.env
+.env.*
+!.env.example

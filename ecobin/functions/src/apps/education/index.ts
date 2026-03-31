@@ -5,6 +5,16 @@ import { GoogleGenAI } from "@google/genai";
 const db = admin.firestore();
 let ai: GoogleGenAI;
 
+// Get API key from environment variable (set via functions/.env file)
+function getApiKey(): string {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY not set. Add it to functions/.env file.");
+    throw new Error("GEMINI_API_KEY environment variable not configured");
+  }
+  return apiKey;
+}
+
 // 30 Quiz Questions for seeding
 const QUIZ_QUESTIONS = [
   { question: "Which of the following is considered e-waste?", options: ["Banana peel", "Old smartphone", "Plastic bottle", "Newspaper"], correctIndex: 1, explanation: "Electronic waste includes discarded electronic appliances like smartphones." },
@@ -137,43 +147,41 @@ export const submitQuiz = onCall(async (request) => {
   }
 });
 
-export const askEcoAssistant = onCall(async (request) => {
-  const auth = request.auth;
-  if (!auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
-
-  const { query } = request.data as { query: string };
-  if (!query) {
-    throw new HttpsError("invalid-argument", "Query is required");
-  }
-
-  if (!ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("GEMINI_API_KEY is not set.");
+export const askEcoAssistant = onCall(
+  async (request) => {
+    const auth = request.auth;
+    if (!auth) {
+      throw new HttpsError("unauthenticated", "User must be logged in");
     }
-    ai = new GoogleGenAI({ apiKey: apiKey || "" });
-  }
 
-  try {
-    const prompt = `You are a helpful Eco Assistant. The user is asking a question about waste or recycling.
-    Answer concisely (under 4 sentences) and clearly. Only answer questions related to the environment, waste, and recycling.
-    User query: "${query}"`;
+    const { query } = request.data as { query: string };
+    if (!query) {
+      throw new HttpsError("invalid-argument", "Query is required");
+    }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt
-    });
+    if (!ai) {
+      const apiKey = getApiKey();
+      ai = new GoogleGenAI({ apiKey });
+    }
 
-    const outputText = response.text || "I'm sorry, I couldn't understand that.";
+    try {
+      const prompt = `You are a helpful Eco Assistant. The user is asking a question about waste or recycling.
+      Answer concisely (under 4 sentences) and clearly. Only answer questions related to the environment, waste, and recycling.
+      User query: "${query}"`;
 
-    return {
-      success: true,
-      explanation: outputText
-    };
-  } catch (error) {
-    console.error("Error asking eco assistant:", error);
-    throw new HttpsError("internal", "Failed to get explanation");
-  }
-});
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt
+      });
+
+      const outputText = response.text || "I'm sorry, I couldn't understand that.";
+
+      return {
+        success: true,
+        explanation: outputText
+      };
+    } catch (error) {
+      console.error("Error asking eco assistant:", error);
+      throw new HttpsError("internal", "Failed to get explanation");
+    }
+  });
